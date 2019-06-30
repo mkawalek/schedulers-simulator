@@ -1,25 +1,25 @@
 package pl.edu.agh
 
-import pl.edu.agh.domain.{DC, Job, Machine, MachineParameters}
 import pl.edu.agh.domain.schedulers._
+import pl.edu.agh.domain.{DC, Machine, MachineParameters, StandardJob}
 
 object Main extends App {
 
   val jobs = List(
-    Job(3, MachineParameters(4, 4, 4)),
-    Job(3, MachineParameters(8, 8, 8)),
-    Job(3, MachineParameters(4, 4, 4)),
-    Job(3, MachineParameters(4, 4, 4)),
-    Job(3, MachineParameters(8, 8, 8)),
-    Job(3, MachineParameters(4, 4, 4)),
-    Job(3, MachineParameters(8, 8, 8)),
-    Job(3, MachineParameters(8, 8, 8))
+    StandardJob(3, MachineParameters(4, 4, 4, dpdk = true)),
+    StandardJob(3, MachineParameters(8, 8, 8, dpdk = true)),
+    StandardJob(3, MachineParameters(4, 4, 4)),
+    StandardJob(3, MachineParameters(4, 4, 4)),
+    StandardJob(3, MachineParameters(8, 8, 8)),
+    StandardJob(3, MachineParameters(4, 4, 4)),
+    StandardJob(3, MachineParameters(8, 8, 8)),
+    StandardJob(3, MachineParameters(8, 8, 8))
   )
 
   val machines = List(
     Machine(MachineParameters(16, 16, 16)),
     Machine(MachineParameters(16, 16, 16)),
-    Machine(MachineParameters(16, 16, 16))
+    Machine(MachineParameters(16, 16, 16, dpdk = true))
   )
 
   val dc = DC(machines)

@@ -1,6 +1,7 @@
 package pl.edu.agh.domain.schedulers
 
 import pl.edu.agh.domain.{DC, Job}
+
 class KubernetesScheduler extends Scheduler {
   override def schedule(dc: DC, jobs: List[Job]): DC =
     DC(jobs.foldLeft(dc.machines) { case (machines, job) =>

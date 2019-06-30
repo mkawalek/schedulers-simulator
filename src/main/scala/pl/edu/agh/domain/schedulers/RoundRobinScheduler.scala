@@ -23,7 +23,6 @@ class RoundRobinScheduler extends Scheduler {
         }
 
       machines.updated(indexOfMachine, machine)
-
     }
 
     DC(machinesAfterScheduling)
