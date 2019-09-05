@@ -1,22 +1,30 @@
 package pl.edu.agh.domain
 
-case class Machine(parameters: MachineParameters, runningJobs: List[Job] = List.empty) {
-  def parametersLeft: MachineParameters = runningJobs.map(_.affinity).reduce { (jobA, jobB) => jobA - jobB }
+case class Machine(machineId: MachineId, parameters: Parameters, runningApplications: List[Application] = List.empty, jobsRunningWithDpdk: List[Application] = List.empty) {
+  def parametersLeft: Parameters = if (runningApplications.isEmpty) parameters else parameters - runningApplications.map(_.SLAs).reduce { (jobA, jobB) => jobA + jobB }
 
-  def canScheduleJob(job: Job): Boolean = {
-    val calculated = this.parameters - runningJobs.map(_.affinity).reduceLeftOption(_ + _).getOrElse(MachineParameters()) - job.affinity
-    val shouldRunDpdk = job.affinity.dpdk
-    val dpdkCondition = if (shouldRunDpdk && !parameters.dpdk) false else true // todo it can be done better but fuck it
+  def scheduleApplication(job: Application): Machine = this.copy(runningApplications = runningApplications :+ job)
 
-    calculated.cpu >= 0 && calculated.ram >= 0 && calculated.disk >= 0 && dpdkCondition
-  }
-
-  def scheduleJob(job: Job): Machine = this.copy(runningJobs = runningJobs :+ job)
+//  def scheduleJobWithDpdk(job: Application): Machine = scheduleJob(job).copy(jobsRunningWithDpdk = jobsRunningWithDpdk :+ job)
 }
 
-case class MachineParameters(cpu: Long = 0, ram: Long = 0, disk: Long = 0, dpdk: Boolean = false) {
-  def -(other: MachineParameters) = MachineParameters(cpu - other.cpu, ram - other.ram, disk - other.disk, dpdk && other.dpdk)
+case class MachineId(value: Long)
 
-  def +(other: MachineParameters) = MachineParameters(cpu + other.cpu, ram + other.ram, disk + other.disk, dpdk && other.dpdk)
+// I ASSUME THAT EVERY MACHINE HAS AT LEAST 1 SIMPLE NIC ADAPTER FOR INTERNET. OTHERS WILL BE USED TO DPDK ONLY
+// THIS ASSUMPTION CAN BE EXPANDED FOR FUTURE WORK, E.G. WE HAVE 3 DPDK NICS AND 2 FOR INTERNET - MAYBE IT CAN BE DONE BETTER AND INCREASE PERFORMANCE
+case class Parameters(cpu: Double, ram: Double, disk: Double, dpdkNICs: Int = 0, dpdkVirtualNICs: Int = 0, bandwidth: Int = 0) {
+  def -(other: Parameters) = Parameters(cpu - other.cpu, ram - other.ram, disk - other.disk, dpdkNICs - other.dpdkNICs, dpdkVirtualNICs - other.dpdkVirtualNICs, bandwidth - other.bandwidth)
 
+  def +(other: Parameters) = Parameters(cpu + other.cpu, ram + other.ram, disk + other.disk, dpdkNICs + other.dpdkNICs, dpdkVirtualNICs + other.dpdkVirtualNICs, bandwidth + other.bandwidth)
+
+  def pomocnicza(value: Double) = if (value < 0) -value else 0.toDouble
+
+  def getOnlyNegativeOr0 = Parameters(pomocnicza(cpu), pomocnicza(ram), pomocnicza(disk), pomocnicza(dpdkNICs.toLong).toInt, pomocnicza(dpdkVirtualNICs.toLong).toInt, pomocnicza(bandwidth.toLong).toInt)
 }
+
+case object Parameters {
+  def predefined(cpu: Double, ram: Double, disk: Double, dpdkNICs: Int, dpdkVirtualNICs: Int, bandwidth: Int): Parameters =
+    Parameters(cpu, ram, disk, dpdkNICs, dpdkVirtualNICs = dpdkNICs + dpdkVirtualNICs, if (dpdkNICs > 0) bandwidth * 3 else bandwidth)
+}
+
+case class SliceId(value: Int)

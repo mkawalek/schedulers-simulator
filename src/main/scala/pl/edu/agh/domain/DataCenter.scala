@@ -1,14 +1,15 @@
 package pl.edu.agh.domain
 
-case class DC(machines: List[Machine]) {
+case class DataCenter(machines: List[Machine]) {
   require(machines.nonEmpty)
 
   def clusterUtilization: (Double, Double, Double) = {
-    require(machines.flatMap(_.runningJobs).nonEmpty)
+    require(machines.flatMap(_.runningApplications).nonEmpty)
 
     val allResources = machines.map(_.parameters).reduce(_ + _)
-    val runningJobResources = machines.flatMap(_.runningJobs).map(_.affinity).reduce(_ + _)
+    val runningJobResources = machines.flatMap(_.runningApplications).map(_.SLAs).reduce(_ + _)
 
+    // FOR NOW ONLY CPU, RAM & DISK
     (
       runningJobResources.cpu.toDouble / allResources.cpu.toDouble,
       runningJobResources.ram.toDouble / allResources.ram.toDouble,
@@ -16,8 +17,8 @@ case class DC(machines: List[Machine]) {
     )
   }
 
-  def overallPerformance: Long = machines.flatMap(machine => {
-    machine.runningJobs.map(_.calculatedPerformanceOnMachine(machine))
+  def overallPerformance: Double = machines.flatMap(machine => {
+    machine.runningApplications.map(_.calculatedPerformanceOnMachine(machine))
   }).sum
 }
 
