@@ -1,6 +1,6 @@
 package pl.edu.agh.domain.schedulers
 
-import pl.edu.agh.domain.{DataCenter, Application}
+import pl.edu.agh.domain.{Application, DataCenter, Machine}
 import pl.edu.agh.domain.schedulers.DockerSwarmScheduler.Strategies.{BinPack, Random, Spread}
 
 class DockerSwarmScheduler(options: Map[String, String]) extends Scheduler {
@@ -8,26 +8,33 @@ class DockerSwarmScheduler(options: Map[String, String]) extends Scheduler {
   override def schedule(dc: DataCenter, jobs: List[Application]): DataCenter = {
     val strategy = DockerSwarmScheduler.strategyFromString(options(DockerSwarmScheduler.strategyOptionKey))
 
-    DataCenter(jobs.foldLeft(scala.util.Random.shuffle(dc.machines)) { case (machines, job) =>
-      val machinesOrderedByStrategy = strategy match {
-        case Spread => machines.sortBy(_.runningApplications.size)
-        case BinPack => machines.sortWith { case (mA, mB) => mA.parameters.cpu <= mB.parameters.cpu } // TODO I DO NOT KNOW HOW TO COMBINE RAM AND CPU IN ONE CONDITION EFFECTIVELY
-        case Random => machines.sortWith((_, _) => scala.util.Random.nextBoolean())
+    DataCenter(jobs.foldLeft(dc.machines) { case (machines, job) =>
+      val virtualMachinesOrderedByStrategy = strategy match {
+        case Spread => machines.flatMap(_.virtualMachines).sortBy(_.runningApplications.size)
+        case BinPack => machines.flatMap(_.virtualMachines).sortWith { case (mA, mB) => mA.parametersLeft.cpu <= mB.parametersLeft.cpu } // TODO I DO NOT KNOW HOW TO COMBINE RAM AND CPU IN ONE CONDITION EFFECTIVELY
+        case Random => scala.util.Random.shuffle(machines.flatMap(_.virtualMachines))
       }
 
-      val (machine, index) = machinesOrderedByStrategy
-        .zipWithIndex
+      val virtualMachineWithScheduledJob = virtualMachinesOrderedByStrategy
         .collectFirst {
-          case (searchingMachine, indexOfSearchingMachine) if canScheduleApplicationConsideringParamsOnly(job, searchingMachine) =>
+          case searchingMachine if canScheduleApplicationConsideringParamsOnly(job, searchingMachine) =>
 //            println(s"ASSIGNING $job to $searchingMachine")
-            searchingMachine.scheduleApplication(job) -> indexOfSearchingMachine
+            searchingMachine.scheduleApplication(job)
         }
         .getOrElse {
           println(s"NOT ENOUGH RESOURCES SKIPPING JOB $job ")
-          machinesOrderedByStrategy.head -> 0
+          virtualMachinesOrderedByStrategy.head
         }
 
-      machinesOrderedByStrategy.updated(index, machine)
+
+      val newMachines = machines.map { mach =>
+        Machine(mach.machineId, mach.virtualMachines.map { vm =>
+          if (vm.virtualMachineId == virtualMachineWithScheduledJob.virtualMachineId) virtualMachineWithScheduledJob
+          else vm
+        })
+      }
+
+      newMachines
     })
   }
 

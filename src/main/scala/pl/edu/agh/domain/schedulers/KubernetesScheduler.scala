@@ -1,22 +1,32 @@
 package pl.edu.agh.domain.schedulers
 
-import pl.edu.agh.domain.{Application, DataCenter}
+import pl.edu.agh.domain.{Application, DataCenter, Machine}
 
 import scala.util.Random
 
 class KubernetesScheduler extends Scheduler {
+
   override def schedule(dc: DataCenter, jobs: List[Application]): DataCenter =
     DataCenter(jobs.foldLeft(Random.shuffle(dc.machines)) { case (machines, job) =>
-      val (machine, index) = machines
-        .zipWithIndex
-        .collectFirst { case (searchingMachine, indexOfSearchingMachine) if canScheduleApplicationConsideringParamsOnly(job, searchingMachine) => searchingMachine.scheduleApplication(job) -> indexOfSearchingMachine }
+      val virtualMachineWithScheduledJob = machines
+        .flatMap(_.virtualMachines)
+        .collectFirst { case searchingMachine if canScheduleApplicationConsideringParamsOnly(job, searchingMachine) => searchingMachine.scheduleApplication(job) }
         .getOrElse {
           println("NOT ENOUGH RESOURCES SKIPPING JOB")
-          machines.head -> 0
+          machines.flatMap(_.virtualMachines).head
         }
 
-        machines.updated(index, machine)
+      val newMachines = machines.map { mach =>
+        Machine(mach.machineId, mach.virtualMachines.map { vm =>
+          if (vm.virtualMachineId == virtualMachineWithScheduledJob.virtualMachineId) virtualMachineWithScheduledJob
+          else vm
+        })
+      }
+
+      newMachines
     })
 
-  override def name: String = "kubernetes"
+  override def name: String
+
+  = "kubernetes"
 }

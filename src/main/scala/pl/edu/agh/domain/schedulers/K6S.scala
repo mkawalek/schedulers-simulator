@@ -1,6 +1,6 @@
 package pl.edu.agh.domain.schedulers
 
-import pl.edu.agh.domain.{Application, DataCenter, Machine, Parameters, SliceId}
+import pl.edu.agh.domain.{Application, DataCenter, Machine, Parameters, SliceId, VirtualMachine}
 
 class K6S(slicesRequirements: Map[SliceId, Parameters]) extends Scheduler {
 
@@ -13,6 +13,7 @@ class K6S(slicesRequirements: Map[SliceId, Parameters]) extends Scheduler {
     val alreadyScheduledForSlices =
       dataCenter
         .machines
+        .flatMap(_.virtualMachines)
         .flatMap(_.runningApplications)
         .map(app => app.sliceId -> app.SLAs)
         .foldLeft(Map.empty[SliceId, Parameters]) {
@@ -26,7 +27,7 @@ class K6S(slicesRequirements: Map[SliceId, Parameters]) extends Scheduler {
           slice -> (params - alreadyScheduledForSlices.getOrElse(slice, Parameters(0, 0, 0)))
       }
 
-    val paramsAdditional = dataCenter.machines.map(_.parameters).reduce(_ + _) -
+    val paramsAdditional = dataCenter.machines.flatMap(_.virtualMachines).map(_.parameters).reduce(_ + _) -
       sliceRequirements.values.reduce(_ + _)
 
     val additionalSpace = paramsAdditional -
@@ -49,16 +50,18 @@ class K6S(slicesRequirements: Map[SliceId, Parameters]) extends Scheduler {
       val machinesOrdered =
         if (application.SLAs.dpdkVirtualNICs > 0)
           machines
+            .flatMap(_.virtualMachines)
             .sortBy(_.parameters.dpdkVirtualNICs)
-            .reverse
         else
           machines
+            .flatMap(_.virtualMachines)
             .sortBy(_.parameters.dpdkVirtualNICs)
+            .reverse
 
-      def thereIsBestPlaceForApplication(application: Application, machine: Machine): Boolean = {
+      def thereIsBestPlaceForApplication(application: Application): Option[VirtualMachine] = {
         // SORT ALREADY APPS BY BANDWIDTH USED WITH APP THAT WE ARE TRYING TO PLACE
         val runningApplicationsWhichAreCommunicatingWithThis = application
-          .bandWithUsedBetweenApplications
+          .bandwidthUsedBetweenApplications
           .filter { case (app, _) =>
             machinesOrdered
               .flatMap(_.runningApplications)
@@ -68,52 +71,49 @@ class K6S(slicesRequirements: Map[SliceId, Parameters]) extends Scheduler {
           .sortBy { case (_, bandwidth) => bandwidth }
 
         // CHECK ON WHAT MACHINES WE CAN SCHEDULE THIS APPLICATION
-        runningApplicationsWhichAreCommunicatingWithThis.exists {
-          case (runningApplicationWhichIsCommunicatingWithThis, _) =>
-            machinesOrdered
-              .filter(machine => canScheduleApplicationConsideringParamsOnly(application, machine))
-              .find(
-                _.runningApplications
-                  .map(_.applicationId)
-                  .contains(runningApplicationWhichIsCommunicatingWithThis)
-              )
-              .contains(machine)
-        }
+        val m = machinesOrdered
+          .filter(machine => canScheduleApplicationConsideringParamsOnly(application, machine))
+            .collectFirst {
+              case machine if runningApplicationsWhichAreCommunicatingWithThis.map(_._1).exists(appId =>machine.runningApplications.map(_.applicationId).contains(appId)) =>
+                machine.scheduleApplication(application)
+            }
+
+        m
       }
 
       // TRY TO FIND PLACE FOR APPLICATION WHERE IT WILL PERFORM BETTER
-      def bestEffortAlgorithm: Option[(Machine, Int)] =
-        machinesOrdered
-          .zipWithIndex
-          .collectFirst {
-            case (searchingMachine, indexOfSearchingMachine)
-              if thereIsBestPlaceForApplication(application, searchingMachine) =>
-              searchingMachine.scheduleApplication(application) -> indexOfSearchingMachine
-          }
 
       // IF WE CANT USE ADDITIONAL INFO ABOUT BANDWIDTH - PLACE IT WHERE WE CAN
-      def simpleAlgorithm: Option[(Machine, Int)] = machinesOrdered
-        .zipWithIndex
+      def simpleAlgorithm = machinesOrdered
         .collectFirst {
-          case (searchingMachine, indexOfSearchingMachine)
-            if canScheduleApplicationConsideringParamsOnly(application, searchingMachine) &&
-              canScheduleApplicationConsideringSlice(
-                application,
-                DataCenter(machines),
-                slicesRequirements) =>
+          case searchingMachine
+            if canScheduleApplicationConsideringParamsOnly(application, searchingMachine)
+//              &&
+//              canScheduleApplicationConsideringSlice(
+//                application,
+//                DataCenter(machines),
+//                slicesRequirements)
+              =>
 
-            searchingMachine.scheduleApplication(application) -> indexOfSearchingMachine
+            searchingMachine.scheduleApplication(application)
         }
 
-      val (machine, index) =
-        bestEffortAlgorithm
+      val virtualMachineWithScheduledJob =
+        thereIsBestPlaceForApplication(application)
           .orElse(simpleAlgorithm)
           .getOrElse {
             println(s"NOT ENOUGH RESOURCES, SKIPPING $application")
-            machinesOrdered.head -> 0
+            machinesOrdered.head
           }
 
-      machinesOrdered.updated(index, machine)
+      val newMachines = machines.map { mach =>
+        Machine(mach.machineId, mach.virtualMachines.map { vm =>
+          if (vm.virtualMachineId == virtualMachineWithScheduledJob.virtualMachineId) virtualMachineWithScheduledJob
+          else vm
+        })
+      }
+
+      newMachines
     })
 
   override def name: String = "k6s"
