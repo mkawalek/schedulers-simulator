@@ -73,11 +73,14 @@ class K6S(slicesRequirements: Map[SliceId, Parameters]) extends Scheduler {
           }
           .sortBy { case (_, bandwidth) => bandwidth }
 
-        // CHECK ON WHAT MACHINES THAT HAVE DEPLOYED APPLICATIONS THIS THIS JOB IS HIGHLY COMMUNICATE WITH WE CAN DEPLOY IT
+        // CHECK ON WHAT MACHINES THAT HAVE DEPLOYED APPLICATIONS
+        // THIS JOB IS HIGHLY COMMUNICATE WITH WE CAN DEPLOY IT
         machinesOrdered
           .filter(machine => canScheduleApplicationConsideringParamsOnly(application, machine))
             .collectFirst {
-              case machine if runningApplicationsWhichAreCommunicatingWithThis.map(_._1).exists(appId =>machine.runningApplications.map(_.applicationId).contains(appId)) =>
+              case machine if runningApplicationsWhichAreCommunicatingWithThis
+                .map(_._1)
+                .exists(appId =>machine.runningApplications.map(_.applicationId).contains(appId)) =>
                 machine.scheduleApplication(application)
             }
       }
@@ -87,11 +90,11 @@ class K6S(slicesRequirements: Map[SliceId, Parameters]) extends Scheduler {
         .collectFirst {
           case searchingMachine
             if canScheduleApplicationConsideringParamsOnly(application, searchingMachine)
-//              &&
-//              canScheduleApplicationConsideringSlice(
-//                application,
-//                DataCenter(machines),
-//                slicesRequirements)
+              &&
+              canScheduleApplicationConsideringSlice(
+                application,
+                DataCenter(machines),
+                slicesRequirements)
               =>
 
             searchingMachine.scheduleApplication(application)
@@ -109,8 +112,11 @@ class K6S(slicesRequirements: Map[SliceId, Parameters]) extends Scheduler {
       // APPLY NEW CONFIGURATION WITH SCHEDULED APPLICATION
       val newMachines = machines.map { mach =>
         Machine(mach.machineId, mach.virtualMachines.map { vm =>
-          if (vm.virtualMachineId == virtualMachineWithScheduledJob.virtualMachineId) virtualMachineWithScheduledJob
-          else vm
+          if (vm.virtualMachineId == virtualMachineWithScheduledJob.virtualMachineId) {
+            virtualMachineWithScheduledJob
+          } else {
+            vm
+          }
         })
       }
 

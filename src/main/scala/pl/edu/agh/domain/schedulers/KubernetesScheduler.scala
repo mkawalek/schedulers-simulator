@@ -26,7 +26,5 @@ class KubernetesScheduler extends Scheduler {
       newMachines
     })
 
-  override def name: String
-
-  = "kubernetes"
+  override def name: String = "kubernetes"
 }
