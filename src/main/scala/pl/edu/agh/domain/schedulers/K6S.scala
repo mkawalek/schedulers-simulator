@@ -4,12 +4,14 @@ import pl.edu.agh.domain.{Application, DataCenter, Machine, Parameters, SliceId,
 
 class K6S(slicesRequirements: Map[SliceId, Parameters]) extends Scheduler {
 
+  // CHECK SLICE CONFIGURATION WHEN SCHEDULING JOBS
   def canScheduleApplicationConsideringSlice(
                                               application: Application,
                                               dataCenter: DataCenter,
                                               sliceRequirements: Map[SliceId, Parameters]
                                             ): Boolean = {
 
+    // ALREADY SCHEDULED RESOURCES PER SLICE
     val alreadyScheduledForSlices =
       dataCenter
         .machines
@@ -27,6 +29,7 @@ class K6S(slicesRequirements: Map[SliceId, Parameters]) extends Scheduler {
           slice -> (params - alreadyScheduledForSlices.getOrElse(slice, Parameters(0, 0, 0)))
       }
 
+    // UNASSIGNED TO ANY SLICE SPACE
     val paramsAdditional = dataCenter.machines.flatMap(_.virtualMachines).map(_.parameters).reduce(_ + _) -
       sliceRequirements.values.reduce(_ + _)
 
@@ -70,20 +73,16 @@ class K6S(slicesRequirements: Map[SliceId, Parameters]) extends Scheduler {
           }
           .sortBy { case (_, bandwidth) => bandwidth }
 
-        // CHECK ON WHAT MACHINES WE CAN SCHEDULE THIS APPLICATION
-        val m = machinesOrdered
+        // CHECK ON WHAT MACHINES THAT HAVE DEPLOYED APPLICATIONS THIS THIS JOB IS HIGHLY COMMUNICATE WITH WE CAN DEPLOY IT
+        machinesOrdered
           .filter(machine => canScheduleApplicationConsideringParamsOnly(application, machine))
             .collectFirst {
               case machine if runningApplicationsWhichAreCommunicatingWithThis.map(_._1).exists(appId =>machine.runningApplications.map(_.applicationId).contains(appId)) =>
                 machine.scheduleApplication(application)
             }
-
-        m
       }
 
       // TRY TO FIND PLACE FOR APPLICATION WHERE IT WILL PERFORM BETTER
-
-      // IF WE CANT USE ADDITIONAL INFO ABOUT BANDWIDTH - PLACE IT WHERE WE CAN
       def simpleAlgorithm = machinesOrdered
         .collectFirst {
           case searchingMachine
@@ -98,6 +97,7 @@ class K6S(slicesRequirements: Map[SliceId, Parameters]) extends Scheduler {
             searchingMachine.scheduleApplication(application)
         }
 
+      // MERGE ALL STRATEGIES
       val virtualMachineWithScheduledJob =
         thereIsBestPlaceForApplication(application)
           .orElse(simpleAlgorithm)
@@ -106,6 +106,7 @@ class K6S(slicesRequirements: Map[SliceId, Parameters]) extends Scheduler {
             machinesOrdered.head
           }
 
+      // APPLY NEW CONFIGURATION WITH SCHEDULED APPLICATION
       val newMachines = machines.map { mach =>
         Machine(mach.machineId, mach.virtualMachines.map { vm =>
           if (vm.virtualMachineId == virtualMachineWithScheduledJob.virtualMachineId) virtualMachineWithScheduledJob
