@@ -29,7 +29,7 @@ trait Application {
     val divider = if (ratio < 1.0) 1.0 else ratio
 
     val outsideBandwidthPerformance = (1.toDouble / divider) * (standardPerformance * applicationsCommunicatingOutside.size)
-    val insidePerformance = finalApplicationsCommunicatingOnSameMachine.size * standardPerformance * 1.5 + applicationsOnSameVirtualMachine.size * standardPerformance * 1.8
+    val insidePerformance = finalApplicationsCommunicatingOnSameMachine.size * standardPerformance * 2 + applicationsOnSameVirtualMachine.size * standardPerformance * 4
 
     outsideBandwidthPerformance + insidePerformance
   }
